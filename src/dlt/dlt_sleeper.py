@@ -6,6 +6,7 @@
 
 import dlt
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, IntegerType, MapType, DoubleType, NullType, FloatType, BooleanType, TimestampType, LongType
+from pyspark.sql.functions import col, expr, explode, current_timestamp, sum, when, lit
 
 # COMMAND ----------
 
@@ -314,6 +315,149 @@ def bronze_players():
     StructField("college", StringType(), True),
     StructField("fantasy_positions", ArrayType(StringType()), True),  # Array of Strings
     StructField("competitions", ArrayType(StringType()), True),  # Empty array
-    StructField("birth_city", StringType(), True)
+    StructField("birth_city", StringType(), True),
+    StructField("_year", IntegerType(), True),
+    StructField("_league_id", StringType(), True),
+    StructField("_matchup_week", IntegerType(), True),
+    StructField("_ingested_ts", TimestampType(), True)
     ])
     return spark.readStream.schema(players_schema).json('/mnt/databricks/sleeper/stg/players/*')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ##silver
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### silver players dim
+
+# COMMAND ----------
+
+# dlt.create_streaming_table(name="silver_players_dim", comment="SCD2 on player master data")
+# dlt.apply_changes(
+#     target           = "silver_players_dim",
+#     source           = "bronze_players",
+#     keys             = ["player_id"],
+#     sequence_by      = col("ingested_ts"),      # your bronze ingestion timestamp
+#     except_column_list = ["ingested_ts"],       # drop ts from final dim
+#     stored_as_scd_type = "2"
+# )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### silver_rosters_snapshot
+
+# COMMAND ----------
+
+@dlt.table(
+  name="silver_rosters_snapshot",
+  comment="Weekly snapshot of roster composition",
+  partition_cols=["_year", "_matchup_week"]
+)
+def rosters_snapshot():
+    df = spark.readStream.table("sleeper.bronze_rosters") \
+        .withColumn("snapshot_ts", current_timestamp())
+
+    # pack players & points together, then explode
+    packed = df.select(
+      "roster_id", "_matchup_week", "snapshot_ts", "starters",
+      expr("transform(arrays_zip(players, players_points), x -> struct(x.players as player_id, x.players_points as player_points))").alias("player_struct")
+    )
+
+    exploded = packed.select(
+      "roster_id", "_matchup_week", "snapshot_ts", "starters",
+      explode("player_struct").alias("rec")
+    )
+
+    return exploded.select(
+      col("roster_id"),
+      col("_matchup_week"),
+      col("rec.player_id"),
+      expr("array_contains(starters, rec.player_id)").alias("is_starter"),
+      col("rec.player_points").alias("player_points"),
+      col("snapshot_ts")
+    )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### silver_matchups_fact
+
+# COMMAND ----------
+
+@dlt.table(
+  name="silver_fact_matchup",
+  comment="Flattened matchup outcomes",
+  partition_cols=["week"]
+)
+def fact_matchup():
+    m = spark.readStream.table("bronze_matchups") \
+        .withColumn("week", col("_matchup_week"))
+    # explode roster-level points
+    exploded = m.select(
+      "matchup_id", "week",
+      expr("transform(arrays_zip(roster_id, starters_points), x -> struct(x.roster_id as roster_id, x.starters_points as roster_points))").alias("r1"),
+      expr("transform(arrays_zip(roster_id, bench_points),   x -> struct(x.roster_id as roster_id, x.bench_points     as bench_points))").alias("r2")
+    )
+    # join each roster to its opponent
+    df1 = exploded.select("matchup_id","week", explode("r1").alias("a"), explode("r1").alias("b")) \
+           .filter(col("a.roster_id") != col("b.roster_id")) \
+           .select(
+             col("matchup_id"),
+             col("week"),
+             col("a.roster_id").alias("roster_id"),
+             col("b.roster_id").alias("opponent_id"),
+             col("a.roster_points").alias("roster_points"),
+             col("b.roster_points").alias("opp_points"),
+             expr("CASE WHEN a.roster_points > b.roster_points THEN a.roster_id ELSE b.roster_id END").alias("winner_id")
+           )
+    return df1
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## gold
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### gold_weekly_performance_fact
+
+# COMMAND ----------
+
+def fact_weekly_performance():
+    snap = dlt.read("silver_roster_snapshot")
+    # aggregate starter vs total points
+    agg = snap.groupBy("roster_id","week").agg(
+      sum("player_points").alias("total_points"),
+      sum(when(col("is_starter"), col("player_points")).otherwise(0)).alias("starters_points")
+    ).withColumn(
+      "bench_points", col("total_points") - col("starters_points")
+    ).withColumn(
+      "bench_efficiency", col("bench_points") / col("total_points") * 100
+    )
+
+    # wins/losses from matchup fact
+    match = dlt.read("silver_fact_matchup") \
+      .select(
+        "roster_id","week",
+        when(col("winner_id")==col("roster_id"), 1).otherwise(0).alias("wins"),
+        when(col("winner_id")!=col("roster_id"), 1).otherwise(0).alias("losses")
+      )
+    wl = match.groupBy("roster_id","week").agg(
+      sum("wins").alias("wins"),
+      sum("losses").alias("losses")
+    )
+
+    perf = agg.join(wl, ["roster_id","week"], "left")
+
+    return perf.select(
+      "roster_id","week","total_points","starters_points",
+      "bench_points","bench_efficiency","wins","losses",
+      # placeholders – replace with your actual logic / joins
+      lit(None).cast("double").alias("roster_strength"),
+      lit(None).cast("double").alias("management_score")
+    )
