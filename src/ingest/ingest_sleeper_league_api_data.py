@@ -58,6 +58,22 @@ for endpoint in endpoints:
 # COMMAND ----------
 
 # MAGIC %md
+# MAGIC ## v1/league
+
+# COMMAND ----------
+
+response = requests.get(f"https://api.sleeper.app/v1/league/{par_league_id}/")
+data = response.json()
+
+# add metadata
+data = add_metadata([data])
+# Write JSON data to a volume with a unique timestamp
+
+dbutils.fs.put(f"{tgt_dir}/league/{par_year}/league_{par_league_id}_{par_matchup_week}_{timestamp}.json", json.dumps(data), overwrite=True)
+
+# COMMAND ----------
+
+# MAGIC %md
 # MAGIC ## v1/drafts
 
 # COMMAND ----------

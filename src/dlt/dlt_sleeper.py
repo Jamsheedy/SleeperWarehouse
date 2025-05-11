@@ -6,7 +6,7 @@
 
 import dlt
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, IntegerType, MapType, DoubleType, NullType, FloatType, BooleanType, TimestampType, LongType
-from pyspark.sql.functions import col, expr, explode, current_timestamp, sum, when, lit, array_contains
+from pyspark.sql.functions import col, expr, explode, current_timestamp, sum, when, lit, array_contains, coalesce, concat_ws
 
 # COMMAND ----------
 
@@ -65,38 +65,6 @@ def bronze_rosters():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ###bronze_matchups
-
-# COMMAND ----------
-
-@dlt.table(
-  comment="The raw matchups from the Sleeper API",
-  table_properties={
-    "myCompanyPipeline.quality": "bronze",
-    "pipelines.autoOptimize.managed": "true"
-  }
-)
-def bronze_matchups():
-    matchups_schema = StructType([
-        StructField("points", DoubleType(), True),  # Points as a double (floating point number)
-        StructField("players", ArrayType(StringType()), True),  # Array of player IDs (strings)
-        StructField("roster_id", IntegerType(), True),  # Roster ID as an integer
-        StructField("custom_points", ArrayType(StringType()), True),  # Nullable field for custom points (could later be a float)
-        StructField("matchup_id", IntegerType(), True),  # Matchup ID as an integer
-        StructField("starters", ArrayType(StringType()), True),  # Array of starters (player IDs as strings)
-        StructField("starters_points", ArrayType(FloatType()), True),  # Array of points corresponding to the starters
-        StructField("players_points", MapType(StringType(), FloatType()), True),  # Map of player IDs to their points
-        StructField("_year", IntegerType(), True),
-        StructField("_league_id", StringType(), True),
-        StructField("_matchup_week", IntegerType(), True),
-        StructField("_ingested_ts", TimestampType(), True)
-    ])
-
-    return spark.readStream.schema(matchups_schema).json('/mnt/databricks/sleeper/stg/matchups/*')
-
-# COMMAND ----------
-
-# MAGIC %md
 # MAGIC ### bronze_users
 
 # COMMAND ----------
@@ -134,6 +102,38 @@ def bronze_users():
 ])
 
     return spark.readStream.schema(users_schema).json('/mnt/databricks/sleeper/stg/users/*')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### bronze_matchups
+
+# COMMAND ----------
+
+@dlt.table(
+  comment="The raw matchups from the Sleeper API",
+  table_properties={
+    "myCompanyPipeline.quality": "bronze",
+    "pipelines.autoOptimize.managed": "true"
+  }
+)
+def bronze_matchups():
+    matchups_schema = StructType([
+        StructField("points", DoubleType(), True),  # Points as a double (floating point number)
+        StructField("players", ArrayType(StringType()), True),  # Array of player IDs (strings)
+        StructField("roster_id", IntegerType(), True),  # Roster ID as an integer
+        StructField("custom_points", ArrayType(StringType()), True),  # Nullable field for custom points (could later be a float)
+        StructField("matchup_id", IntegerType(), True),  # Matchup ID as an integer
+        StructField("starters", ArrayType(StringType()), True),  # Array of starters (player IDs as strings)
+        StructField("starters_points", ArrayType(FloatType()), True),  # Array of points corresponding to the starters
+        StructField("players_points", MapType(StringType(), FloatType()), True),  # Map of player IDs to their points
+        StructField("_year", IntegerType(), True),
+        StructField("_league_id", StringType(), True),
+        StructField("_matchup_week", IntegerType(), True),
+        StructField("_ingested_ts", TimestampType(), True)
+    ])
+
+    return spark.readStream.schema(matchups_schema).json('/mnt/databricks/sleeper/stg/matchups/*')
 
 # COMMAND ----------
 
@@ -322,6 +322,164 @@ def bronze_players():
     StructField("_ingested_ts", TimestampType(), True)
     ])
     return spark.readStream.schema(players_schema).json('/mnt/databricks/sleeper/stg/players/*')
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### bronze_league
+
+# COMMAND ----------
+
+@dlt.table(
+  comment="The raw league information from the Sleeper API",
+  table_properties={
+    "myCompanyPipeline.quality": "bronze",
+    "pipelines.autoOptimize.managed": "true"
+  }
+)
+def bronze_leagues():
+    league_schema = StructType([
+        StructField("name", StringType(), True),
+        StructField("status", StringType(), True),
+        StructField("metadata", StructType([
+            StructField("auto_continue", StringType(), True),
+            StructField("keeper_deadline", StringType(), True),
+            StructField("latest_league_winner_roster_id", StringType(), True),
+            StructField("promo_commish", StringType(), True),
+            StructField("promo_id", StringType(), True),
+            StructField("promo_nfl_commish_100", StringType(), True)
+        ]), True),
+        StructField("settings", StructType([
+            StructField("best_ball", IntegerType(), True),
+            StructField("last_report", IntegerType(), True),
+            StructField("waiver_budget", IntegerType(), True),
+            StructField("disable_adds", IntegerType(), True),
+            StructField("capacity_override", IntegerType(), True),
+            StructField("taxi_deadline", IntegerType(), True),
+            StructField("draft_rounds", IntegerType(), True),
+            StructField("reserve_allow_na", IntegerType(), True),
+            StructField("start_week", IntegerType(), True),
+            StructField("playoff_seed_type", IntegerType(), True),
+            StructField("playoff_teams", IntegerType(), True),
+            StructField("veto_votes_needed", IntegerType(), True),
+            StructField("squads", IntegerType(), True),
+            StructField("num_teams", IntegerType(), True),
+            StructField("daily_waivers_hour", IntegerType(), True),
+            StructField("playoff_type", IntegerType(), True),
+            StructField("taxi_slots", IntegerType(), True),
+            StructField("sub_start_time_eligibility", IntegerType(), True),
+            StructField("last_scored_leg", IntegerType(), True),
+            StructField("daily_waivers_days", IntegerType(), True),
+            StructField("playoff_week_start", IntegerType(), True),
+            StructField("waiver_clear_days", IntegerType(), True),
+            StructField("reserve_allow_doubtful", IntegerType(), True),
+            StructField("commissioner_direct_invite", IntegerType(), True),
+            StructField("veto_auto_poll", IntegerType(), True),
+            StructField("reserve_allow_dnr", IntegerType(), True),
+            StructField("taxi_allow_vets", IntegerType(), True),
+            StructField("waiver_day_of_week", IntegerType(), True),
+            StructField("playoff_round_type", IntegerType(), True),
+            StructField("reserve_allow_out", IntegerType(), True),
+            StructField("reserve_allow_sus", IntegerType(), True),
+            StructField("veto_show_votes", IntegerType(), True),
+            StructField("trade_deadline", IntegerType(), True),
+            StructField("taxi_years", IntegerType(), True),
+            StructField("daily_waivers", IntegerType(), True),
+            StructField("disable_trades", IntegerType(), True),
+            StructField("pick_trading", IntegerType(), True),
+            StructField("type", IntegerType(), True),
+            StructField("max_keepers", IntegerType(), True),
+            StructField("waiver_type", IntegerType(), True),
+            StructField("max_subs", IntegerType(), True),
+            StructField("league_average_match", IntegerType(), True),
+            StructField("trade_review_days", IntegerType(), True),
+            StructField("bench_lock", IntegerType(), True),
+            StructField("offseason_adds", IntegerType(), True),
+            StructField("leg", IntegerType(), True),
+            StructField("reserve_slots", IntegerType(), True),
+            StructField("reserve_allow_cov", IntegerType(), True),
+            StructField("daily_waivers_last_ran", IntegerType(), True)
+        ]), True),
+        StructField("avatar", StringType(), True),
+        StructField("company_id", StringType(), True),
+        StructField("sport", StringType(), True),
+        StructField("season_type", StringType(), True),
+        StructField("season", StringType(), True),
+        StructField("shard", IntegerType(), True),
+        StructField("scoring_settings", StructType([
+            StructField("sack", IntegerType(), True),
+            StructField("fgm_40_49", IntegerType(), True),
+            StructField("bonus_rec_yd_100", IntegerType(), True),
+            StructField("bonus_rush_yd_100", IntegerType(), True),
+            StructField("pass_int", IntegerType(), True),
+            StructField("pts_allow_0", IntegerType(), True),
+            StructField("bonus_pass_yd_400", IntegerType(), True),
+            StructField("pass_2pt", IntegerType(), True),
+            StructField("st_td", IntegerType(), True),
+            StructField("rec_td", IntegerType(), True),
+            StructField("fgm_30_39", IntegerType(), True),
+            StructField("xpmiss", IntegerType(), True),
+            StructField("rush_td", IntegerType(), True),
+            StructField("rec_2pt", IntegerType(), True),
+            StructField("st_fum_rec", IntegerType(), True),
+            StructField("fgmiss", IntegerType(), True),
+            StructField("ff", IntegerType(), True),
+            StructField("rec", IntegerType(), True),
+            StructField("pts_allow_14_20", IntegerType(), True),
+            StructField("def_2pt", IntegerType(), True),
+            StructField("fgm_0_19", IntegerType(), True),
+            StructField("int", IntegerType(), True),
+            StructField("def_st_fum_rec", IntegerType(), True),
+            StructField("fum_lost", IntegerType(), True),
+            StructField("pts_allow_1_6", IntegerType(), True),
+            StructField("fgm_20_29", IntegerType(), True),
+            StructField("pts_allow_21_27", IntegerType(), True),
+            StructField("bonus_pass_yd_300", IntegerType(), True),
+            StructField("xpm", IntegerType(), True),
+            StructField("rush_2pt", IntegerType(), True),
+            StructField("fum_rec", IntegerType(), True),
+            StructField("bonus_rec_yd_200", IntegerType(), True),
+            StructField("def_st_td", IntegerType(), True),
+            StructField("fgm_50p", IntegerType(), True),
+            StructField("def_td", IntegerType(), True),
+            StructField("bonus_rush_yd_200", IntegerType(), True),
+            StructField("safe", IntegerType(), True),
+            StructField("pass_yd", FloatType(), True),
+            StructField("blk_kick", IntegerType(), True),
+            StructField("pass_td", IntegerType(), True),
+            StructField("rush_yd", FloatType(), True),
+            StructField("fum", IntegerType(), True),
+            StructField("pts_allow_28_34", IntegerType(), True),
+            StructField("pts_allow_35p", IntegerType(), True),
+            StructField("fum_rec_td", IntegerType(), True),
+            StructField("rec_yd", FloatType(), True),
+            StructField("def_st_ff", IntegerType(), True),
+            StructField("pts_allow_7_13", IntegerType(), True),
+            StructField("st_ff", IntegerType(), True)
+        ]), True),
+        StructField("last_message_id", StringType(), True),
+        StructField("draft_id", StringType(), True),
+        StructField("last_author_avatar", StringType(), True),
+        StructField("last_author_display_name", StringType(), True),
+        StructField("last_author_id", StringType(), True),
+        StructField("last_author_is_bot", BooleanType(), True),
+        StructField("last_message_attachment", StringType(), True),
+        StructField("last_message_text_map", StringType(), True),
+        StructField("last_message_time", LongType(), True),
+        StructField("last_pinned_message_id", StringType(), True),
+        StructField("last_read_id", StringType(), True),
+        StructField("league_id", StringType(), True),
+        StructField("previous_league_id", StringType(), True),
+        StructField("roster_positions", ArrayType(StringType()), True),
+        StructField("bracket_id", LongType(), True),
+        StructField("bracket_overrides_id", StringType(), True),
+        StructField("group_id", StringType(), True),
+        StructField("loser_bracket_id", LongType(), True),
+        StructField("loser_bracket_overrides_id", StringType(), True),
+        StructField("total_rosters", IntegerType(), True)
+    ])
+
+    return spark.readStream.schema(league_schema).json('/mnt/databricks/sleeper/stg/league/*')
 
 # COMMAND ----------
 
@@ -545,6 +703,113 @@ dlt.apply_changes(
     except_column_list = ["_ingested_ts"],       # drop ts from final dim
     stored_as_scd_type = "2"
 )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### silver_model_player_performances
+
+# COMMAND ----------
+
+@dlt.table(
+  name="silver_model_player_performances",
+  comment="matchups",
+  partition_cols=["_league_id", "_matchup_week",]
+)
+def silver_model_player_performances():
+    df_matchups_players_dim = dlt.read_stream('silver_matchups_players_dim')
+    df_players_dim = dlt.read_stream('silver_players_dim')
+
+    df_players_dim = df_players_dim.select(
+        "player_id",
+        "_league_id",
+        "_matchup_week",
+        coalesce(col("full_name"), col("last_name")).alias("player_name"),
+        col("position").alias("player_position"),
+        col("team").alias("nfl_team"),
+        "years_exp",
+        "injury_status",
+        concat_ws(" ", col("injury_body_part"), col("injury_notes")).alias("injury_notes"),
+        "college",
+        when(col("years_exp") == 1, True).otherwise(False).alias("is_rookie")
+    )
+
+    return df_matchups_players_dim.join(
+        df_players_dim,
+        (df_matchups_players_dim.player_id == df_players_dim.player_id) &
+        (df_matchups_players_dim._league_id == df_players_dim._league_id) &
+        (df_matchups_players_dim._matchup_week == df_players_dim._matchup_week)
+    ).select(
+        "roster_id",
+        "matchup_id",
+        df_matchups_players_dim.player_id,
+        "player_name",
+        "player_position",
+        "nfl_team",
+        "player_points",
+        "is_starter",
+        "years_exp",
+        "is_rookie",
+        "injury_status",
+        "injury_notes",
+        "college",
+        df_matchups_players_dim._league_id,
+        df_matchups_players_dim._matchup_week,
+        df_matchups_players_dim._year
+    )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### silver_model_roster_results
+
+# COMMAND ----------
+
+@dlt.table(
+  name="silver_model_roster_results",
+  comment="matchups",
+  partition_cols=["_league_id", "_matchup_week",]
+)
+def silver_model_roster_results():
+    df_matchups_fact = dlt.read_stream('silver_matchups_fact')
+    df_rosters_dim = dlt.read_stream('silver_rosters_dim')
+    df_users_dim = dlt.read_stream('silver_users_dim')
+
+    return df_matchups_fact.join(
+        df_rosters_dim,
+        (df_matchups_fact._league_id == df_rosters_dim._league_id) &
+        (df_matchups_fact.roster_id == df_rosters_dim.roster_id) &
+        (df_matchups_fact._matchup_week == df_rosters_dim._matchup_week)
+    ).join(
+        df_users_dim,
+        (df_matchups_fact._league_id == df_users_dim._league_id) &
+        (df_rosters_dim.owner_id == df_users_dim.owner_id) &
+        (df_matchups_fact._matchup_week == df_users_dim._matchup_week)
+    ).select(
+        "matchup_id",
+        df_matchups_fact.roster_id,
+        df_users_dim.owner_id,
+        df_users_dim.owner_name,
+        df_users_dim.is_commissioner,
+        df_users_dim.team_name,
+        df_matchups_fact.points,
+        df_rosters_dim.streak,
+        df_rosters_dim.record,
+        df_rosters_dim.wins,
+        df_rosters_dim.losses,
+        df_rosters_dim.ties,
+        df_rosters_dim.fpts,
+        df_rosters_dim.fpts_against,
+        df_rosters_dim.waiver_budget_used,
+        df_rosters_dim.waiver_position,
+        df_matchups_fact._league_id,
+        df_matchups_fact._matchup_week,
+        df_matchups_fact._year
+    )
+
+# COMMAND ----------
+
+
 
 # COMMAND ----------
 
