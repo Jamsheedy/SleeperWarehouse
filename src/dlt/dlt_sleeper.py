@@ -7,6 +7,8 @@
 import dlt
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, IntegerType, MapType, DoubleType, NullType, FloatType, BooleanType, TimestampType, LongType
 from pyspark.sql.functions import col, expr, explode, current_timestamp, sum, when, lit, array_contains, coalesce, concat_ws
+from pyspark.sql.window import Window
+import pyspark.sql.functions as F
 
 # COMMAND ----------
 
@@ -538,7 +540,7 @@ def silver_rosters_players_snapshot():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC #### silver_stg_rosters
+# MAGIC ### silver_stg_rosters
 
 # COMMAND ----------
 
