@@ -828,13 +828,13 @@ def silver_model_roster_results():
   partition_cols=["_league_id", "_matchup_week"]
 )
 def gold_weekly_performance_ranks():
-  df_roster_results = dlt.read('silver_model_roster_results').withWatermark("_ingested_ts", "1 minute")
-  df_player_performances = dlt.read('silver_model_player_performances').withWatermark("_ingested_ts", "1 minute")
+  df_roster_results = dlt.read('silver_model_roster_results')#.withWatermark("_ingested_ts", "1 minute")
+  df_player_performances = dlt.read('silver_model_player_performances')#.withWatermark("_ingested_ts", "1 minute")
 
   df_joined_results = df_roster_results.alias("roster").join(
       df_player_performances.alias("performance"),
       (col("roster.roster_id") == col("performance.roster_id")) &
-      (col("roster.matchup_id") == col("performance.matchup_id")) &
+      (col("roster._league_id") == col("performance._league_id")) &
       (col("roster._matchup_week") == col("performance._matchup_week"))
   )
 
@@ -843,7 +843,7 @@ def gold_weekly_performance_ranks():
       "roster.is_commissioner", "roster.team_name", "roster.matchup_points", "roster.team_streak",
       "roster.team_record", "roster.team_total_wins", "roster.team_total_losses", "roster.team_total_ties",
       "roster.team_total_fpts", "roster.team_total_fpts_against", "roster.team_waiver_budget_used",
-      "roster.team_waiver_position", "roster._league_id", "roster._matchup_week", "roster._year", "roster._ingested_ts"
+      "roster.team_waiver_position", "roster._league_id", "roster._matchup_week", "roster._year",
   ).agg(
       F.sum(F.when(col("performance.is_starter"), col("performance.player_points")).otherwise(0)).alias("starter_points"),
       F.sum(F.when(~col("performance.is_starter"), col("performance.player_points")).otherwise(0)).alias("bench_points")
@@ -857,23 +857,24 @@ def gold_weekly_performance_ranks():
   df_bench_better_than_starters = df_ranked.filter(
       (col("rank") == 1) & (~col("performance.is_starter"))
   ).select(
-      "performance.matchup_id", "performance.roster_id", "performance.player_id",
+      "performance._league_id", "performance._matchup_week", "performance.roster_id", "performance.player_id",
       "performance.player_name", "performance.player_position", "performance.player_points"
   )
 
   df_starters = df_joined_results.filter(col("performance.is_starter")).select(
-      "performance.matchup_id", "performance.roster_id", "performance.player_position",
+      "performance._league_id", "performance._matchup_week", "performance.roster_id", "performance.player_position",
       col("performance.player_name").alias("starter_player_name"),
       col("performance.player_points").alias("starter_player_points")
   )
 
   df_bench_better_than_starters = df_bench_better_than_starters.alias("bench").join(
       df_starters.alias("starters"),
-      (col("bench.matchup_id") == col("starters.matchup_id")) &
+      (col("bench._league_id") == col("starters._league_id")) &
+      (col("bench._matchup_week") == col("starters._matchup_week")) &
       (col("bench.roster_id") == col("starters.roster_id")) &
       (col("bench.player_position") == col("starters.player_position"))
   ).select(
-      col("bench.matchup_id"), col("bench.roster_id"),
+      col("bench._league_id"), col("bench._matchup_week"), col("bench.roster_id"),
       F.struct(
           col("bench.player_name").alias("benched_player_name"),
           col("bench.player_points").alias("benched_player_points"),
@@ -883,7 +884,7 @@ def gold_weekly_performance_ranks():
   )
 
   df_bench_better_than_starters_agg = df_bench_better_than_starters.groupBy(
-      "matchup_id", "roster_id"
+      "_league_id", "_matchup_week", "roster_id"
   ).agg(
       F.collect_list("bench_better_than_starter").alias("bench_better_than_starters"),
       F.sum("bench_better_than_starter.point_opportunity_cost").alias("missed_starter_points")
@@ -891,13 +892,13 @@ def gold_weekly_performance_ranks():
 
   df_aggregated = df_aggregated.alias("aggregated").join(
       df_bench_better_than_starters_agg.alias("bench_agg"),
-      ["matchup_id", "roster_id"], "left"
+      ["_league_id", "_matchup_week", "roster_id"], "left"
   )
 
-  window_spec_highest_scoring = Window.partitionBy("roster.matchup_id", "roster.roster_id").orderBy(F.desc("performance.player_points"))
+  window_spec_highest_scoring = Window.partitionBy("roster._league_id", "roster._matchup_week", "roster.roster_id").orderBy(F.desc("performance.player_points"))
   df_highest_scoring = df_joined_results.withColumn("rank", F.row_number().over(window_spec_highest_scoring)).filter(col("rank") <= 3)
 
-  df_highest_scoring_agg = df_highest_scoring.groupBy("roster.matchup_id", "roster.roster_id").agg(
+  df_highest_scoring_agg = df_highest_scoring.groupBy("roster._league_id", "roster._matchup_week", "roster.roster_id").agg(
       F.collect_list(
           F.struct(
               col("performance.player_name").alias("highest_scoring_player_name"),
@@ -908,16 +909,17 @@ def gold_weekly_performance_ranks():
 
   df_aggregated = df_aggregated.join(
       df_highest_scoring_agg.alias("high_score_agg"),
-      ["matchup_id", "roster_id"], "left"
+      ["_league_id", "_matchup_week", "roster_id"], "left"
   )
 
   df_opponent_points = df_aggregated.select(
-      col("matchup_id"), col("roster_id").alias("opponent_roster_id"), col("starter_points").alias("opponent_starter_points")
+      col("_league_id"), col("_matchup_week"), col("roster_id").alias("opponent_roster_id"), col("starter_points").alias("opponent_starter_points")
   )
 
   df_aggregated = df_aggregated.alias("aggregated").join(
       df_opponent_points.alias("opponent"),
-      (col("aggregated.matchup_id") == col("opponent.matchup_id")) &
+      (col("aggregated._league_id") == col("opponent._league_id")) &
+      (col("aggregated._matchup_week") == col("opponent._matchup_week")) &
       (col("aggregated.roster_id") != col("opponent.opponent_roster_id")),
       "left"
   ).withColumn(
@@ -944,7 +946,7 @@ def gold_weekly_performance_ranks():
       "aggregated.matchup_points", "starter_points", "bench_points", "bench_better_than_starters",
       "missed_starter_points", "couldve_won_with_missed_bench_points", "highest_scoring_players",
       "roster_strength", "roster_strength_percentile", "manager_efficiency", "week_power_points",
-      "aggregated._matchup_week", "aggregated._year", "aggregated._ingested_ts"
+      "aggregated._matchup_week", "aggregated._year"
   )
 
 # COMMAND ----------
@@ -965,8 +967,8 @@ from pyspark.sql import functions as F, types as T
 def gold_power_rankings():
     # 1) your incoming‐week data as a stream
     curr = (
-      dlt.readStream("gold_weekly_performance_ranks")
-         .withWatermark("_ingested_ts", "1 minute")
+      dlt.read("gold_weekly_performance_ranks")
+        #  .withWatermark("_ingested_ts", "1 minute")
          .select(
            "_league_id",
            "roster_id",
