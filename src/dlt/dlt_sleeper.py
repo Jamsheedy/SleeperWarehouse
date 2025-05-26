@@ -548,29 +548,29 @@ def silver_rosters_players_snapshot():
 def silver_stg_rosters():
     return (
         dlt.read_stream("bronze_rosters")
-        .withColumn("streak", expr("metadata['streak']"))
-        .withColumn("record", expr("metadata['record']"))
-        .withColumn("wins", expr("settings['wins']"))
-        .withColumn("losses", expr("settings['losses']"))
-        .withColumn("ties", expr("settings['ties']"))
-        .withColumn("fpts", expr("settings['fpts'] + settings['fpts_decimal'] / 100"))
-        .withColumn("fpts_against", expr("settings['fpts_against'] + settings['fpts_against_decimal'] / 100"))
-        .withColumn("total_moves", expr("settings['total_moves']"))
-        .withColumn("waiver_budget_used", expr("settings['waiver_budget_used']"))
-        .withColumn("waiver_position", expr("settings['waiver_position']"))
+        .withColumn("team_streak", expr("metadata['streak']"))
+        .withColumn("team_record", expr("metadata['record']"))
+        .withColumn("team_total_wins", expr("settings['wins']"))
+        .withColumn("team_total_losses", expr("settings['losses']"))
+        .withColumn("team_total_ties", expr("settings['ties']"))
+        .withColumn("team_total_fpts", expr("settings['fpts'] + settings['fpts_decimal'] / 100"))
+        .withColumn("team_total_fpts_against", expr("settings['fpts_against'] + settings['fpts_against_decimal'] / 100"))
+        .withColumn("team_total_moves", expr("settings['total_moves']"))
+        .withColumn("team_waiver_budget_used", expr("settings['waiver_budget_used']"))
+        .withColumn("team_waiver_position", expr("settings['waiver_position']"))
         .select(
             "owner_id",
             "roster_id",
-            "streak",
-            "record",
-            "wins",
-            "losses",
-            "ties",
-            "fpts",
-            "fpts_against",
-            "total_moves",
-            "waiver_budget_used",
-            "waiver_position",
+            "team_streak",
+            "team_record",
+            "team_total_wins",
+            "team_total_losses",
+            "team_total_ties",
+            "team_total_fpts",
+            "team_total_fpts_against",
+            "team_total_moves",
+            "team_waiver_budget_used",
+            "team_waiver_position",
             "_league_id",
             "_matchup_week",
             "_year",
@@ -612,7 +612,7 @@ def silver_matchups_fact():
     .select(
         "matchup_id",
         "roster_id",
-        "points",
+        col("points").alias("matchup_points"),
         "_league_id",
         "_matchup_week",
         "_year",
@@ -657,7 +657,6 @@ dlt.apply_changes(
     source           = "silver_stg_matchups_players",
     keys             = ["_league_id", "player_id"],
     sequence_by      = col("_ingested_ts"),      # your bronze ingestion timestamp
-    except_column_list = ["_ingested_ts"],       # drop ts from final dim
     stored_as_scd_type = "2"
 )
 
@@ -757,7 +756,8 @@ def silver_model_player_performances():
         "college",
         df_matchups_players_dim._league_id,
         df_matchups_players_dim._matchup_week,
-        df_matchups_players_dim._year
+        df_matchups_players_dim._year,
+        df_matchups_players_dim._ingested_ts
     )
 
 # COMMAND ----------
@@ -794,24 +794,21 @@ def silver_model_roster_results():
         df_users_dim.owner_name,
         df_users_dim.is_commissioner,
         df_users_dim.team_name,
-        df_matchups_fact.points,
-        df_rosters_dim.streak,
-        df_rosters_dim.record,
-        df_rosters_dim.wins,
-        df_rosters_dim.losses,
-        df_rosters_dim.ties,
-        df_rosters_dim.fpts,
-        df_rosters_dim.fpts_against,
-        df_rosters_dim.waiver_budget_used,
-        df_rosters_dim.waiver_position,
+        df_matchups_fact.matchup_points,
+        df_rosters_dim.team_streak,
+        df_rosters_dim.team_record,
+        df_rosters_dim.team_total_wins,
+        df_rosters_dim.team_total_losses,
+        df_rosters_dim.team_total_ties,
+        df_rosters_dim.team_total_fpts,
+        df_rosters_dim.team_total_fpts_against,
+        df_rosters_dim.team_waiver_budget_used,
+        df_rosters_dim.team_waiver_position,
         df_matchups_fact._league_id,
         df_matchups_fact._matchup_week,
-        df_matchups_fact._year
+        df_matchups_fact._year,
+        df_matchups_fact._ingested_ts
     )
-
-# COMMAND ----------
-
-
 
 # COMMAND ----------
 
@@ -821,40 +818,214 @@ def silver_model_roster_results():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### gold_weekly_performance_fact
+# MAGIC ### gold_weekly_performance_ranks
 
 # COMMAND ----------
 
-# def fact_weekly_performance():
-#     snap = dlt.read("silver_roster_snapshot")
-#     # aggregate starter vs total points
-#     agg = snap.groupBy("roster_id","week").agg(
-#       sum("player_points").alias("total_points"),
-#       sum(when(col("is_starter"), col("player_points")).otherwise(0)).alias("starters_points")
-#     ).withColumn(
-#       "bench_points", col("total_points") - col("starters_points")
-#     ).withColumn(
-#       "bench_efficiency", col("bench_points") / col("total_points") * 100
-#     )
+@dlt.table(
+  name="gold_weekly_performance_ranks",
+  comment="Aggregated and ranked rosters with isolated performance metric for that given week",
+  partition_cols=["_league_id", "_matchup_week"]
+)
+def gold_weekly_performance_ranks():
+  df_roster_results = dlt.read('silver_model_roster_results').withWatermark("_ingested_ts", "1 minute")
+  df_player_performances = dlt.read('silver_model_player_performances').withWatermark("_ingested_ts", "1 minute")
 
-#     # wins/losses from matchup fact
-#     match = dlt.read("silver_fact_matchup") \
-#       .select(
-#         "roster_id","week",
-#         when(col("winner_id")==col("roster_id"), 1).otherwise(0).alias("wins"),
-#         when(col("winner_id")!=col("roster_id"), 1).otherwise(0).alias("losses")
-#       )
-#     wl = match.groupBy("roster_id","week").agg(
-#       sum("wins").alias("wins"),
-#       sum("losses").alias("losses")
-#     )
+  df_joined_results = df_roster_results.alias("roster").join(
+      df_player_performances.alias("performance"),
+      (col("roster.roster_id") == col("performance.roster_id")) &
+      (col("roster.matchup_id") == col("performance.matchup_id")) &
+      (col("roster._matchup_week") == col("performance._matchup_week"))
+  )
 
-#     perf = agg.join(wl, ["roster_id","week"], "left")
+  df_aggregated = df_joined_results.groupBy(
+      "roster.matchup_id", "roster.roster_id", "roster.owner_id", "roster.owner_name",
+      "roster.is_commissioner", "roster.team_name", "roster.matchup_points", "roster.team_streak",
+      "roster.team_record", "roster.team_total_wins", "roster.team_total_losses", "roster.team_total_ties",
+      "roster.team_total_fpts", "roster.team_total_fpts_against", "roster.team_waiver_budget_used",
+      "roster.team_waiver_position", "roster._league_id", "roster._matchup_week", "roster._year", "roster._ingested_ts"
+  ).agg(
+      F.sum(F.when(col("performance.is_starter"), col("performance.player_points")).otherwise(0)).alias("starter_points"),
+      F.sum(F.when(~col("performance.is_starter"), col("performance.player_points")).otherwise(0)).alias("bench_points")
+  ).withColumn(
+      "roster_strength", col("starter_points") + (0.2 * col("bench_points"))
+  )
 
-#     return perf.select(
-#       "roster_id","week","total_points","starters_points",
-#       "bench_points","bench_efficiency","wins","losses",
-#       # placeholders – replace with your actual logic / joins
-#       lit(None).cast("double").alias("roster_strength"),
-#       lit(None).cast("double").alias("management_score")
-#     )
+  window_spec = Window.partitionBy("performance.matchup_id", "performance.roster_id", "performance.player_position").orderBy(F.desc("performance.player_points"))
+  df_ranked = df_joined_results.withColumn("rank", F.rank().over(window_spec))
+
+  df_bench_better_than_starters = df_ranked.filter(
+      (col("rank") == 1) & (~col("performance.is_starter"))
+  ).select(
+      "performance.matchup_id", "performance.roster_id", "performance.player_id",
+      "performance.player_name", "performance.player_position", "performance.player_points"
+  )
+
+  df_starters = df_joined_results.filter(col("performance.is_starter")).select(
+      "performance.matchup_id", "performance.roster_id", "performance.player_position",
+      col("performance.player_name").alias("starter_player_name"),
+      col("performance.player_points").alias("starter_player_points")
+  )
+
+  df_bench_better_than_starters = df_bench_better_than_starters.alias("bench").join(
+      df_starters.alias("starters"),
+      (col("bench.matchup_id") == col("starters.matchup_id")) &
+      (col("bench.roster_id") == col("starters.roster_id")) &
+      (col("bench.player_position") == col("starters.player_position"))
+  ).select(
+      col("bench.matchup_id"), col("bench.roster_id"),
+      F.struct(
+          col("bench.player_name").alias("benched_player_name"),
+          col("bench.player_points").alias("benched_player_points"),
+          col("starters.starter_player_name"), col("starters.starter_player_points"),
+          (col("bench.player_points") - col("starters.starter_player_points")).alias("point_opportunity_cost")
+      ).alias("bench_better_than_starter")
+  )
+
+  df_bench_better_than_starters_agg = df_bench_better_than_starters.groupBy(
+      "matchup_id", "roster_id"
+  ).agg(
+      F.collect_list("bench_better_than_starter").alias("bench_better_than_starters"),
+      F.sum("bench_better_than_starter.point_opportunity_cost").alias("missed_starter_points")
+  )
+
+  df_aggregated = df_aggregated.alias("aggregated").join(
+      df_bench_better_than_starters_agg.alias("bench_agg"),
+      ["matchup_id", "roster_id"], "left"
+  )
+
+  window_spec_highest_scoring = Window.partitionBy("roster.matchup_id", "roster.roster_id").orderBy(F.desc("performance.player_points"))
+  df_highest_scoring = df_joined_results.withColumn("rank", F.row_number().over(window_spec_highest_scoring)).filter(col("rank") <= 3)
+
+  df_highest_scoring_agg = df_highest_scoring.groupBy("roster.matchup_id", "roster.roster_id").agg(
+      F.collect_list(
+          F.struct(
+              col("performance.player_name").alias("highest_scoring_player_name"),
+              col("performance.player_points").alias("highest_scoring_player_points")
+          )
+      ).alias("highest_scoring_players")
+  )
+
+  df_aggregated = df_aggregated.join(
+      df_highest_scoring_agg.alias("high_score_agg"),
+      ["matchup_id", "roster_id"], "left"
+  )
+
+  df_opponent_points = df_aggregated.select(
+      col("matchup_id"), col("roster_id").alias("opponent_roster_id"), col("starter_points").alias("opponent_starter_points")
+  )
+
+  df_aggregated = df_aggregated.alias("aggregated").join(
+      df_opponent_points.alias("opponent"),
+      (col("aggregated.matchup_id") == col("opponent.matchup_id")) &
+      (col("aggregated.roster_id") != col("opponent.opponent_roster_id")),
+      "left"
+  ).withColumn(
+      "couldve_won_with_missed_bench_points",
+      F.when(col("starter_points") > col("opponent_starter_points"), None)
+      .when((col("starter_points") + col("missed_starter_points")) > col("opponent_starter_points"), True)
+      .otherwise(False)
+  ).withColumn(
+      "manager_efficiency",
+      col("starter_points") / (col("starter_points") + F.coalesce(col("missed_starter_points"), F.lit(0)))
+  )
+
+  window_spec_percentile = Window.partitionBy("aggregated._league_id", "aggregated._matchup_week").orderBy("roster_strength")
+  df_aggregated = df_aggregated.withColumn("roster_strength_percentile", F.percent_rank().over(window_spec_percentile)).withColumn(
+      "week_power_points",
+      (col("roster_strength_percentile") * 0.8) + (col("manager_efficiency") * 0.2)
+  )
+
+  return df_aggregated.select(
+      "aggregated._league_id", "aggregated.matchup_id", "aggregated.roster_id", "aggregated.owner_id",
+      "aggregated.owner_name", "aggregated.is_commissioner", "aggregated.team_name", "aggregated.team_streak",
+      "aggregated.team_record", "aggregated.team_total_wins", "aggregated.team_total_losses", "aggregated.team_total_ties",
+      "aggregated.team_total_fpts", "aggregated.team_total_fpts_against", "aggregated.team_waiver_budget_used",
+      "aggregated.matchup_points", "starter_points", "bench_points", "bench_better_than_starters",
+      "missed_starter_points", "couldve_won_with_missed_bench_points", "highest_scoring_players",
+      "roster_strength", "roster_strength_percentile", "manager_efficiency", "week_power_points",
+      "aggregated._matchup_week", "aggregated._year", "aggregated._ingested_ts"
+  )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### gold_power_rankings
+
+# COMMAND ----------
+
+import dlt
+from pyspark.sql import functions as F, types as T
+
+@dlt.table(
+  name="gold_power_rankings",
+  comment="Stateful exponential‐decay of week_power_points → power_rank_points, safe for full‐refresh",
+  partition_cols=["_league_id", "_matchup_week"]
+)
+def gold_power_rankings():
+    # 1) your incoming‐week data as a stream
+    curr = (
+      dlt.readStream("gold_weekly_performance_ranks")
+         .withWatermark("_ingested_ts", "1 minute")
+         .select(
+           "_league_id",
+           "roster_id",
+           "_matchup_week",
+           "week_power_points"
+         )
+    )
+
+    # 2) try to read last week's computed table; if it doesn't exist yet, make an empty DF
+    PREV_SCHEMA  = T.StructType([
+      T.StructField("p_league",   T.StringType(),  False),
+      T.StructField("p_roster",   T.LongType(),    False),
+      T.StructField("p_week",     T.IntegerType(), False),
+      T.StructField("p_power",    T.DoubleType(),  False),
+    ])
+
+    if spark.catalog.tableExists('sleeper.gold_power_rankings'):
+        prev = (
+          spark.read
+               .table('sleeper.gold_power_rankings')
+               .select(
+                 F.col("_league_id").alias("p_league"),
+                 F.col("roster_id").alias("p_roster"),
+                 F.col("_matchup_week").alias("p_week"),
+                 F.col("power_rank_points").alias("p_power")
+               )
+        )
+    else:
+        # first‐run: no prior table, so build an empty one
+        prev = spark.createDataFrame([], PREV_SCHEMA)
+
+    # 3) left‐join current week → prior week (week = prev_week + 1)
+    joined = curr.join(
+      prev,
+      on=[
+        curr["_league_id"]    == prev["p_league"],
+        curr["roster_id"]     == prev["p_roster"],
+        curr["_matchup_week"] == prev["p_week"] + 1
+      ],
+      how="left"
+    )
+
+    # 4) apply the decay (or fallback to raw if no prior value)
+    out = joined.withColumn(
+      "power_rank_points",
+      F.when(
+        F.col("p_power").isNull(),
+        F.col("week_power_points")
+      ).otherwise(
+        0.3 * F.col("week_power_points") +
+        0.7 * F.col("p_power")
+      )
+    ).select(
+      "_league_id",
+      "roster_id",
+      "_matchup_week",
+      "week_power_points",
+      "power_rank_points"
+    )
+
+    return out
+
