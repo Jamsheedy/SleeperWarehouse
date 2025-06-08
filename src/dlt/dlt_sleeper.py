@@ -854,6 +854,10 @@ def gold_weekly_performance_ranks():
         "roster_strength", col("starter_points") + (0.2 * col("bench_points"))
     )
 
+    # rank the starter points against other teams in a given matchup week
+    window_spec = Window.partitionBy("roster._league_id","roster._matchup_week",).orderBy(F.asc("matchup_points"))
+    df_aggregated = df_aggregated.withColumn("starter_points_percentile", F.percent_rank().over(window_spec))
+
     # rank all the players for a given position on a roster to understand strong players at each position
     window_spec = Window.partitionBy("performance._league_id","performance._matchup_week", "performance.roster_id", "performance.player_position").orderBy(F.desc("performance.player_points"))
     df_ranked = df_joined_results.withColumn("rank", F.rank().over(window_spec))
@@ -868,7 +872,7 @@ def gold_weekly_performance_ranks():
 
     # get list of starter players
     df_starters = df_joined_results.filter(col("performance.is_starter")).select(
-        "performance._league_id", "performance._matchup_week", "performance.roster_id", "performance.player_position",
+        "performance._league_id", "performance._matchup_week", "performance.roster_id", "performance.player_position", "performance.player_id",
         col("performance.player_name").alias("starter_player_name"),
         col("performance.player_points").alias("starter_player_points")
     ).alias('starters')
@@ -890,6 +894,10 @@ def gold_weekly_performance_ranks():
     # dedup bench players who get recommended twice (take the highest point potential)
     window_spec = Window.partitionBy("bench._league_id","bench._matchup_week", "bench.roster_id", "bench.player_id").orderBy(F.desc("point_oppertunity_cost"))
     df_bench_better_than_starters = df_bench_better_than_starters.withColumn("bench_player_dedup", F.rank().over(window_spec)).filter("bench_player_dedup == 1")
+
+    # dedup starter players who get recommended against twice (take the highest point potential)
+    window_spec = Window.partitionBy("bench._league_id","bench._matchup_week", "bench.roster_id", "starters.player_id").orderBy(F.desc("point_oppertunity_cost"))
+    df_bench_better_than_starters = df_bench_better_than_starters.withColumn("starter_player_dedup", F.rank().over(window_spec)).filter("starter_player_dedup == 1")
 
     # create array of struct to list each suggestion
     df_bench_better_than_starters = df_bench_better_than_starters.select(
@@ -938,7 +946,12 @@ def gold_weekly_performance_ranks():
 
     # get opponent points
     df_opponent_points = df_aggregated.select(
-        col("_league_id"), col("_matchup_week"), col("matchup_id"), col("roster_id").alias("opponent_roster_id"), col("starter_points").alias("opponent_starter_points")
+        col("_league_id"), 
+        col("_matchup_week"),
+        col("matchup_id"), 
+        col("roster_id").alias("opponent_roster_id"), 
+        col("matchup_points").alias("opponent_starter_points"),
+        col("team_name").alias("opponent_team_name")
     )
 
     # self join to get opponent points and determine if missed starter points is enough to make a difference in the matchup. Determine managers efficiency based on ratio of starter points / max points
@@ -951,12 +964,25 @@ def gold_weekly_performance_ranks():
         "left"
     ).withColumn(
         "couldve_won_with_missed_bench_points",
-        F.when(col("starter_points") > col("opponent_starter_points"), None)
-        .when((col("starter_points") + col("missed_starter_points")) > col("opponent_starter_points"), True)
+        F.when(col("matchup_points") > col("opponent_starter_points"), None)
+        .when((col("matchup_points") + col("missed_starter_points")) > col("opponent_starter_points"), True)
         .otherwise(False)
     ).withColumn(
         "manager_efficiency",
         col("starter_points") / (col("starter_points") + F.coalesce(col("missed_starter_points"), F.lit(0)))
+    ).withColumn(
+        "matchup_outcome",
+        F.when(col("matchup_points") > col("opponent_starter_points"), "Win")
+        .when(col("matchup_points") == col("opponent_starter_points"), "Draw")
+        .otherwise("Loss")
+    ).withColumn(
+        "matchup_outcome_type",
+        F.when((col("matchup_outcome") == "Win") & (col("starter_points_percentile") < 0.5), "Lucky Win")
+        .when((col("matchup_outcome") == "Win") & (col("starter_points_percentile") >= 0.5), "Deserving Win")
+        .when((col("matchup_outcome") == "Loss") & (col("starter_points_percentile") < 0.5), "Deserving Loss")
+        .when((col("matchup_outcome") == "Loss") & (col("starter_points_percentile") >= 0.5), "Unlucky Loss")
+        .when((col("matchup_outcome") == "Draw") & (col("starter_points_percentile") < 0.5), "Low Scoring Draw")
+        .when((col("matchup_outcome") == "Draw") & (col("starter_points_percentile") >= 0.5), "High Scoring Draw")
     )
 
     # generate percentile rank of the roster strength points to normalize the power points
@@ -973,8 +999,8 @@ def gold_weekly_performance_ranks():
         "aggregated.owner_name", "aggregated.is_commissioner", "aggregated.team_name", "aggregated.team_streak",
         "aggregated.team_record", "aggregated.team_total_wins", "aggregated.team_total_losses", "aggregated.team_total_ties",
         "aggregated.team_total_fpts", "aggregated.team_total_fpts_against", "aggregated.team_waiver_budget_used",
-        "aggregated.matchup_points", "starter_points", "bench_points", "bench_better_than_starters",
-        "missed_starter_points", "couldve_won_with_missed_bench_points", "highest_scoring_players",
+        "aggregated.matchup_points", "starter_points", "starter_points_percentile", "bench_points", "bench_better_than_starters", "matchup_outcome", "matchup_outcome_type",
+        "missed_starter_points", "couldve_won_with_missed_bench_points", "opponent_starter_points", "opponent_team_name", "highest_scoring_players",
         "roster_strength", "roster_strength_percentile", "manager_efficiency", "week_power_points",
         "aggregated._matchup_week", "aggregated._year"
     )
