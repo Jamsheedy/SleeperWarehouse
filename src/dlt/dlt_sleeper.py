@@ -621,6 +621,38 @@ def silver_matchups_fact():
 
 # COMMAND ----------
 
+# MAGIC
+# MAGIC %md
+# MAGIC ### silver_matchups_fact
+
+# COMMAND ----------
+
+@dlt.table(
+  name="silver_drafts_picks_fact",
+  comment="Flattened draft pick information",
+  partition_cols=["_league_id", "_matchup_week",]
+)
+def silver_matchups_fact():
+    return dlt.read_stream('bronze_drafts_picks')\
+        .select(
+            'draft_id',
+            'draft_slot',
+            'is_keeper',
+            'metadata.*',
+            'pick_no',
+            'picked_by',
+            'player_id',
+            'reactions',
+            'roster_id',
+            'round',
+            '_year',
+            '_league_id',
+            '_matchup_week',
+            '_ingested_ts'
+        )
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ### silver_stg_matchups_players
 
