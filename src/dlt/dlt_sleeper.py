@@ -623,7 +623,7 @@ def silver_matchups_fact():
 
 # MAGIC
 # MAGIC %md
-# MAGIC ### silver_matchups_fact
+# MAGIC ### silver_drafts_picks_fact
 
 # COMMAND ----------
 
@@ -632,7 +632,7 @@ def silver_matchups_fact():
   comment="Flattened draft pick information",
   partition_cols=["_league_id", "_matchup_week",]
 )
-def silver_matchups_fact():
+def silver_drafts_picks_fact():
     return dlt.read_stream('bronze_drafts_picks')\
         .select(
             'draft_id',
@@ -641,7 +641,6 @@ def silver_matchups_fact():
             'metadata.*',
             'pick_no',
             'picked_by',
-            'player_id',
             'reactions',
             'roster_id',
             'round',
@@ -750,8 +749,8 @@ dlt.apply_changes(
   partition_cols=["_league_id", "_matchup_week",]
 )
 def silver_model_player_performances():
-    df_matchups_players_dim = dlt.read_stream('silver_matchups_players_dim')
-    df_players_dim = dlt.read_stream('silver_players_dim')
+    df_matchups_players_dim = dlt.read('silver_matchups_players_dim')
+    df_players_dim = dlt.read('silver_players_dim')
 
     df_players_dim = df_players_dim.select(
         "player_id",
@@ -805,9 +804,9 @@ def silver_model_player_performances():
   partition_cols=["_league_id", "_matchup_week",]
 )
 def silver_model_roster_results():
-    df_matchups_fact = dlt.read_stream('silver_matchups_fact')
-    df_rosters_dim = dlt.read_stream('silver_rosters_dim')
-    df_users_dim = dlt.read_stream('silver_users_dim')
+    df_matchups_fact = dlt.read('silver_matchups_fact')
+    df_rosters_dim = dlt.read('silver_rosters_dim')
+    df_users_dim = dlt.read('silver_users_dim')
 
     return df_matchups_fact.join(
         df_rosters_dim,
@@ -840,6 +839,52 @@ def silver_model_roster_results():
         df_matchups_fact._matchup_week,
         df_matchups_fact._year,
         df_matchups_fact._ingested_ts
+    )
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ### silver_model_drafts
+
+# COMMAND ----------
+
+@dlt.table(
+  name="silver_model_drafts",
+  comment="user draft picks",
+  partition_cols=["_league_id", "_matchup_week",]
+)
+def silver_model_drafts():
+    draft_picks_df = dlt.read('silver_drafts_picks_fact')
+    users_df = dlt.read('silver_users_dim')
+
+    joined_df = draft_picks_df.alias('picks').join(
+        users_df.alias('users'),
+        (draft_picks_df['_league_id'] == users_df['_league_id']) &
+        (draft_picks_df['_matchup_week'] == users_df['_matchup_week']) &
+        (draft_picks_df['picked_by'] == users_df['owner_id']),
+        'inner'
+    )
+
+    return joined_df.select(
+        'draft_id',
+        'owner_id',
+        'owner_name',
+        'team_name',
+        'roster_id',
+        'draft_slot',
+        'round',
+        'pick_no',
+        'player_id',
+        'first_name',
+        'last_name',
+        'team',
+        'position',
+        'years_exp',
+        'injury_status',
+        'picks._league_id',
+        'picks._year',
+        'picks._matchup_week',
+        'picks._ingested_ts'
     )
 
 # COMMAND ----------
