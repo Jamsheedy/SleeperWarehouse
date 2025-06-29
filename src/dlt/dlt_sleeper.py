@@ -1089,83 +1089,316 @@ def gold_weekly_performance_ranks():
 
 # COMMAND ----------
 
-import dlt
-from pyspark.sql import functions as F, types as T
-from pyspark.sql.window import Window
+# import dlt
+# from pyspark.sql import functions as F, types as T
+# from pyspark.sql.window import Window
 
-@dlt.table(
-  name="gold_power_rankings",
-  comment="Stateful exponential‐decay of week_power_points → power_rank_points, safe for full‐refresh",
-  partition_cols=["_league_id", "_matchup_week"]
-)
-def gold_power_rankings():
-    src = dlt.read('gold_weekly_performance_ranks')
+# @dlt.table(
+#   name="gold_power_rankings",
+#   comment="Stateful exponential‐decay of week_power_points → power_rank_points, safe for full‐refresh",
+#   partition_cols=["_league_id", "_matchup_week"]
+# )
+# def gold_power_rankings():
+#     src = dlt.read('gold_weekly_performance_ranks')
 
-    src = src.withColumn('power_rank_points', lit(None).cast(DoubleType()) )\
-        .withColumn('power_ranking', lit(None).cast(IntegerType()) )\
-        .withColumn('power_rank_change', lit(None).cast(IntegerType()) )
+#     src = src.withColumn('power_rank_points', lit(None).cast(DoubleType()) )\
+#         .withColumn('power_ranking', lit(None).cast(IntegerType()) )\
+#         .withColumn('power_rank_change', lit(None).cast(IntegerType()) )
 
-    if spark.catalog.tableExists('sleeper.gold_power_rankings'):
-        target = spark.read.table('sleeper.gold_power_rankings')
-    else:
-        target = spark.createDataFrame([], src.schema)
+#     if spark.catalog.tableExists('sleeper.gold_power_rankings'):
+#         target = spark.read.table('sleeper.gold_power_rankings')
+#     else:
+#         target = spark.createDataFrame([], src.schema)
 
     
-    # Alias columns in target
-    target_alias = target.select(
-        col("_league_id").alias("target_league_id"),
-        col("_matchup_week").alias("target_matchup_week"),
-        col("roster_id").alias("target_roster_id")
+#     # Alias columns in target
+#     target_alias = target.select(
+#         col("_league_id").alias("target_league_id"),
+#         col("_matchup_week").alias("target_matchup_week"),
+#         col("roster_id").alias("target_roster_id")
+#     )
+
+#     # Perform the join
+#     src = src.join(
+#         target_alias,
+#         (src["_league_id"] == target_alias["target_league_id"]) &
+#         (src["_matchup_week"] == target_alias["target_matchup_week"]) &
+#         (src["roster_id"] == target_alias["target_roster_id"]),
+#         how="left_anti"
+#     ).drop("target_league_id", "target_matchup_week", "target_roster_id")
+
+#     distinct_league_week = src.select("_league_id", "_matchup_week").distinct().orderBy("_league_id", "_matchup_week")
+
+#     for row in distinct_league_week.collect():
+#         league_id = row["_league_id"]
+#         week = row["_matchup_week"]
+#         print(f"Processing league {league_id} week {week}")
+
+#         temp = src.filter((src["_league_id"] == league_id) & (src["_matchup_week"] == week))
+
+#         previous_week = week - 1
+#         previous_week_data = target.filter((target["_league_id"] == league_id) & (target["_matchup_week"] == previous_week)).alias("prev_week")
+
+#         if previous_week_data.count() > 0:
+#             previous_week_data = previous_week_data\
+#                 .select(
+#                     col('roster_id').alias('previous_roster_id'),
+#                     col("power_rank_points").alias('previous_power_rank_points'),
+#                     col("power_ranking").alias('previous_power_ranking')
+#                 )
+#             temp = temp.join(previous_week_data, temp["roster_id"] == previous_week_data["previous_roster_id"], how="left")
+#             temp = temp.withColumn(
+#                 "power_rank_points",
+#                 (col("week_power_points") * 0.3) + (col("previous_power_rank_points") * 0.7)
+#             )
+#         else:
+#             temp = temp.withColumn("power_rank_points", col("week_power_points"))
+
+#         # Calculate power_ranking
+#         window_spec = Window.partitionBy("_league_id", "_matchup_week").orderBy(col("power_rank_points").desc())
+#         temp = temp.withColumn("power_ranking", F.rank().over(window_spec))
+
+#         if previous_week_data.count() > 0:
+#             temp = temp.withColumn(
+#                 "power_rank_change",
+#                 col('previous_power_ranking') - col('power_ranking')
+#             )
+
+#             temp = temp.drop('previous_power_rank_points').drop('previous_roster_id').drop('previous_power_ranking')
+
+#         target = target.union(temp)
+
+#     return target
+
+# COMMAND ----------
+
+# import dlt
+# from pyspark.sql.functions import col, lag, rank, when
+# from pyspark.sql.types import DoubleType, IntegerType
+# from pyspark.sql.window import Window
+
+# @dlt.table(
+#     name="gold_power_rankings",
+#     comment="Declarative exponential decay power rankings",
+#     partition_cols=["_league_id", "_matchup_week"]
+# )
+# def gold_power_rankings():
+#     src = dlt.read("gold_weekly_performance_ranks")
+
+#     # Window to get previous week’s week_power_points
+#     prev_points_window = Window.partitionBy("roster_id", "_league_id").orderBy("matchup_week")
+
+#     # Add power_rank_points using exponential decay
+#     src = src.withColumn(
+#         "previous_power_rank_points",
+#         lag("previous_power_rank_points").over(prev_points_window)
+#     )
+
+#     src = src.withColumn(
+#         "power_rank_points",
+#         when(
+#             col("previous_power_rank_points").isNotNull(),
+#             (col("week_power_points") * 0.3) + (col("previous_power_rank_points") * 0.7)
+#         ).otherwise(col("week_power_points"))
+#     )
+
+#     # Rank teams based on power_rank_points within each week
+#     ranking_window = Window.partitionBy("_league_id", "_matchup_week").orderBy(col("power_rank_points").desc())
+
+#     src = src.withColumn("power_ranking", rank().over(ranking_window))
+
+#     # Now compute power_rank_change by comparing current ranking to previous ranking
+#     prev_rank_window = Window.partitionBy("roster_id", "_league_id").orderBy("matchup_week")
+
+#     src = src.withColumn(
+#         "previous_power_ranking",
+#         lag("power_ranking").over(prev_rank_window)
+#     )
+
+#     src = src.withColumn(
+#         "power_rank_change",
+#         col("previous_power_ranking") - col("power_ranking")
+#     )
+
+#     return src
+
+
+# COMMAND ----------
+
+# @dlt.table(
+#     name="gold_power_rank_base",
+#     comment="Base table with week_power_points"
+# )
+# def gold_power_rank_base():
+#     return dlt.read("gold_weekly_performance_ranks")\
+#         .select("_league_id", "_matchup_week", "roster_id", "week_power_points")
+
+
+# COMMAND ----------
+
+# @dlt.table(
+#     name="gold_power_rankings",
+#     comment="Applies exponential decay using actual prior week power_rank_points",
+#     partition_cols=["_league_id", "_matchup_week"]
+# )
+# def gold_power_rankings():
+#     from pyspark.sql.functions import col, rank, when
+#     from pyspark.sql.window import Window
+
+#     base = dlt.read("gold_power_rank_base")
+
+#     # Step 1: Read prior week power_rank_points
+#     prior = spark.read.table("sleeper.gold_power_rankings")\
+#         .select(
+#             col("_league_id").alias("prev_league_id"),
+#             col("_matchup_week").alias("prev_week"),
+#             col("roster_id").alias("prev_roster_id"),
+#             col("power_rank_points").alias("prev_power_rank_points"),
+#             col("power_ranking").alias("prev_power_ranking")
+#         )
+
+#     # Shift prior week forward so it joins with current week
+#     prior = prior.withColumn("curr_week", col("prev_week") + 1)
+
+#     # Step 2: Join current base with prior week points
+#     joined = base.alias("curr").join(
+#         prior.alias("prev"),
+#         (col("curr._league_id") == col("prev.prev_league_id")) &
+#         (col("curr._matchup_week") == col("prev.curr_week")) &
+#         (col("curr.roster_id") == col("prev.prev_roster_id")),
+#         how="left"
+#     )
+
+#     # Step 3: Compute power_rank_points
+#     joined = joined.withColumn(
+#         "power_rank_points",
+#         when(
+#             col("prev.prev_power_rank_points").isNotNull(),
+#             col("curr.week_power_points") * 0.3 + col("prev.prev_power_rank_points") * 0.7
+#         ).otherwise(col("curr.week_power_points"))
+#     )
+
+#     # Step 4: Ranking within each week
+#     rank_window = Window.partitionBy("curr._league_id", "curr._matchup_week")\
+#                         .orderBy(col("power_rank_points").desc())
+
+#     ranked = joined.withColumn("power_ranking", rank().over(rank_window))
+
+#     # Step 5: Rank change
+#     ranked = ranked.withColumn("power_rank_change", col("prev.prev_power_ranking") - col("power_ranking"))
+
+#     return ranked.select(
+#         col("curr._league_id").alias("_league_id"),
+#         col("curr._matchup_week").alias("_matchup_week"),
+#         col("curr.roster_id").alias("roster_id"),
+#         col("curr.week_power_points"),
+#         "power_rank_points",
+#         "power_ranking",
+#         "power_rank_change"
+#     )
+
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC getting somewhere
+
+# COMMAND ----------
+
+# import dlt
+# from pyspark.sql.functions import col, expr, collect_list, arrays_zip, explode
+
+# @dlt.table(
+#   name="gold_power_rankings",
+#   comment="Stateful exponential‐decay of week_power_points → power_rank_points, safe for full‐refresh",
+#   partition_cols=["_league_id", "_matchup_week"]
+# )
+# def gold_power_rankings():
+#     src = dlt.read("gold_weekly_performance_ranks") \
+#         .select("_league_id", "_matchup_week", "roster_id", "week_power_points")
+
+#     df = src.groupBy("_league_id", "roster_id").agg(
+#         collect_list("week_power_points").alias("raw_scores"),
+#         collect_list("_matchup_week").alias("matchup_weeks")
+#     ).withColumn(
+#         "indexed_scores",
+#         expr("transform(raw_scores, (x, i) -> struct(x as raw, i as idx))")
+#     ).withColumn(
+#         "decayed_scores",
+#         expr("""
+#             transform(indexed_scores, x ->
+#                 aggregate(
+#                     filter(indexed_scores, z -> z.idx <= x.idx),
+#                     cast(0.0 as double),
+#                     (acc, y) -> acc * 0.7 + y.raw * 0.3
+#                 )
+#             )
+#         """)
+#     ).withColumn(
+#         "zipped",
+#         explode(arrays_zip("matchup_weeks", "raw_scores", "decayed_scores"))
+#     ).select(
+#         col("_league_id"),
+#         col("roster_id"),
+#         col("zipped.matchup_weeks").alias("_matchup_week"),
+#         col("zipped.raw_scores").alias("week_power_points"),
+#         col("zipped.decayed_scores").alias("power_rank_points")
+#     )
+
+#     return df
+
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC https://stackoverflow.com/questions/62033781/how-can-i-use-pysparks-window-function-to-model-exponential-decay
+
+# COMMAND ----------
+
+import dlt
+from pyspark.sql.functions import col, expr, collect_list, arrays_zip, explode
+
+@dlt.table(
+    name="gold_power_rankings",
+    comment="Accurate exponential decay calculation across weeks",
+    partition_cols=["_league_id", "_matchup_week"]
+)
+def gold_power_rankings():
+    # Read the base data
+    src = dlt.read("gold_weekly_performance_ranks") \
+        .select("_league_id", "_matchup_week", "roster_id", "week_power_points")
+
+    # Group by league/team and collect week data in order
+    df = src.groupBy("_league_id", "roster_id").agg(
+        collect_list("week_power_points").alias("week_power_points_list"),
+        collect_list("_matchup_week").alias("matchup_week_list")
+    ).withColumn(
+        "indexed_points",
+        expr("transform(week_power_points_list, (x, i) -> struct(x as raw, i as idx))")
+    ).withColumn(
+        "power_rank_points_list",
+        expr("""
+            transform(indexed_points, x ->
+                IF(x.idx = 0,
+                   x.raw,
+                   aggregate(
+                       slice(indexed_points, 1, x.idx + 1),
+                       cast(0.0 as double),
+                       (acc, y) -> acc * 0.7 + y.raw * 0.3
+                   )
+                )
+            )
+        """)
+    ).withColumn(
+        "zipped",
+        explode(arrays_zip("matchup_week_list", "week_power_points_list", "power_rank_points_list"))
+    ).select(
+        col("_league_id"),
+        col("roster_id"),
+        col("zipped.matchup_week_list").alias("_matchup_week"),
+        col("zipped.week_power_points_list").alias("week_power_points"),
+        col("zipped.power_rank_points_list").alias("power_rank_points")
     )
 
-    # Perform the join
-    src = src.join(
-        target_alias,
-        (src["_league_id"] == target_alias["target_league_id"]) &
-        (src["_matchup_week"] == target_alias["target_matchup_week"]) &
-        (src["roster_id"] == target_alias["target_roster_id"]),
-        how="left_anti"
-    ).drop("target_league_id", "target_matchup_week", "target_roster_id")
+    return df
 
-    distinct_league_week = src.select("_league_id", "_matchup_week").distinct().orderBy("_league_id", "_matchup_week")
-
-    for row in distinct_league_week.collect():
-        league_id = row["_league_id"]
-        week = row["_matchup_week"]
-        print(f"Processing league {league_id} week {week}")
-
-        temp = src.filter((src["_league_id"] == league_id) & (src["_matchup_week"] == week))
-
-        previous_week = week - 1
-        previous_week_data = target.filter((target["_league_id"] == league_id) & (target["_matchup_week"] == previous_week)).alias("prev_week")
-
-        if previous_week_data.count() > 0:
-            previous_week_data = previous_week_data\
-                .select(
-                    col('roster_id').alias('previous_roster_id'),
-                    col("power_rank_points").alias('previous_power_rank_points'),
-                    col("power_ranking").alias('previous_power_ranking')
-                )
-            temp = temp.join(previous_week_data, temp["roster_id"] == previous_week_data["previous_roster_id"], how="left")
-            temp = temp.withColumn(
-                "power_rank_points",
-                (col("week_power_points") * 0.3) + (col("previous_power_rank_points") * 0.7)
-            )
-        else:
-            temp = temp.withColumn("power_rank_points", col("week_power_points"))
-
-        # Calculate power_ranking
-        window_spec = Window.partitionBy("_league_id", "_matchup_week").orderBy(col("power_rank_points").desc())
-        temp = temp.withColumn("power_ranking", F.rank().over(window_spec))
-
-        if previous_week_data.count() > 0:
-            temp = temp.withColumn(
-                "power_rank_change",
-                col('previous_power_ranking') - col('power_ranking')
-            )
-
-            temp = temp.drop('previous_power_rank_points').drop('previous_roster_id').drop('previous_power_ranking')
-
-        target = target.union(temp)
-
-    return target
