@@ -1476,4 +1476,6 @@ def gold_power_rankings():
         F.lag("power_rank").over(prev_week_window)
     )
 
+    final_df = final_df.withColumn('power_rank_change', col('previous_power_rank') - col('power_rank'))
+
     return final_df
