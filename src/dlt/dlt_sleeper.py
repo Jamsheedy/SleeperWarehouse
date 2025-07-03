@@ -895,13 +895,18 @@ def silver_model_drafts():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ### gold_weekly_performance_ranks
+# MAGIC ### gold_power_ranks
 
 # COMMAND ----------
 
+from pyspark.sql.functions import pandas_udf, PandasUDFType
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
+from pyspark.sql.window import Window
+from pyspark.sql import functions as F
+
 @dlt.table(
-  name="gold_weekly_performance_ranks",
-  comment="Aggregated and ranked rosters with isolated performance metric for that given week",
+  name="gold_power_ranks",
+  comment="Aggregated and ranked rosters with isolated performance metric for that given week. Stateful exponential‐decay of week_power_points → power_rank_points, safe for full‐refresh",
   partition_cols=["_league_id", "_matchup_week"]
 )
 def gold_weekly_performance_ranks():
@@ -1071,7 +1076,7 @@ def gold_weekly_performance_ranks():
         (col("roster_strength_percentile") * 0.85) + (col("manager_efficiency") * 0.15)
     )
 
-    return df_aggregated.select(
+    df_to_power_rank =  df_aggregated.select(
         "aggregated._league_id", "aggregated.matchup_id", "aggregated.roster_id", "aggregated.owner_id",
         "aggregated.owner_name", "aggregated.is_commissioner", "aggregated.team_name", "aggregated.team_streak",
         "aggregated.team_record", "aggregated.team_total_wins", "aggregated.team_total_losses", "aggregated.team_total_ties",
@@ -1081,6 +1086,69 @@ def gold_weekly_performance_ranks():
         "roster_strength", "roster_strength_percentile", "manager_efficiency", "week_power_points",
         "aggregated._matchup_week", "aggregated._year"
     )
+
+    schema = StructType([
+        StructField("_league_id", StringType(), True),
+        StructField("roster_id", IntegerType(), True),
+        StructField("_matchup_week", IntegerType(), True),
+        StructField("week_power_points", DoubleType(), True),
+        StructField("previous_power_rank_score", DoubleType(), True),
+        StructField("power_rank_score", DoubleType(), True)
+    ])
+
+    pandas_udf(schema, functionType=PandasUDFType.GROUPED_MAP)
+
+    def power_rankings(pdf):
+        pdf = pdf.sort_values("_matchup_week").reset_index(drop=True)
+
+        prscore_list = []
+        prev_prscore_list = []
+
+        for i, row in pdf.iterrows():
+            if i == 0:
+                prscore = row["week_power_points"]
+                prev_prscore = None
+            else:
+                prscore = prev_prscore * 0.7 + row["week_power_points"] * 0.3
+            
+            prscore_list.append(prscore)
+            prev_prscore_list.append(prev_prscore)
+            prev_prscore = prscore
+
+        pdf["power_rank_score"] = prscore_list
+        pdf["previous_power_rank_score"] = prev_prscore_list
+
+        return pdf[["_league_id", "roster_id", "_matchup_week", "week_power_points", "power_rank_score", "previous_power_rank_score"]]
+
+    # df = dlt.read('gold_weekly_performance_ranks')
+
+    # Apply the function
+    power_rank_df = df_to_power_rank.groupby("_league_id", "roster_id").applyInPandas(power_rankings, schema)
+
+    joined_df = df_to_power_rank.alias('src').join(
+        power_rank_df.alias('powerrank_df'), 
+        on=["_league_id", "roster_id", "_matchup_week", "week_power_points"]
+    ).select(
+        "src.*", 
+        "powerrank_df.power_rank_score", 
+        "powerrank_df.previous_power_rank_score"
+    )
+
+    # Define a window over each league and week
+    rank_window = Window.partitionBy("_league_id", "_matchup_week").orderBy(F.desc("power_rank_score"))
+
+    # Add the power rank (1 = best score)
+    ranked_df = joined_df.withColumn("power_rank", F.dense_rank().over(rank_window))
+
+    prev_week_window = Window.partitionBy("_league_id", "roster_id").orderBy("_matchup_week")
+    final_df = ranked_df.withColumn(
+        "previous_power_rank",
+        F.lag("power_rank").over(prev_week_window)
+    )
+
+    final_df = final_df.withColumn('power_rank_change', col('previous_power_rank') - col('power_rank'))
+
+    return final_df
 
 # COMMAND ----------
 
@@ -1405,77 +1473,77 @@ def gold_weekly_performance_ranks():
 
 # COMMAND ----------
 
-from pyspark.sql.functions import pandas_udf, PandasUDFType
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
-from pyspark.sql.window import Window
-from pyspark.sql import functions as F
+# from pyspark.sql.functions import pandas_udf, PandasUDFType
+# from pyspark.sql.types import StructType, StructField, StringType, IntegerType, DoubleType
+# from pyspark.sql.window import Window
+# from pyspark.sql import functions as F
 
-@dlt.table(
-  name="gold_power_rankings",
-  comment="Stateful exponential‐decay of week_power_points → power_rank_points, safe for full‐refresh",
-  partition_cols=["_league_id", "_matchup_week"]
-)
+# @dlt.table(
+#   name="gold_power_rankings",
+#   comment="Stateful exponential‐decay of week_power_points → power_rank_points, safe for full‐refresh",
+#   partition_cols=["_league_id", "_matchup_week"]
+# )
 
-def gold_power_rankings():
-    schema = StructType([
-        StructField("_league_id", StringType(), True),
-        StructField("roster_id", IntegerType(), True),
-        StructField("_matchup_week", IntegerType(), True),
-        StructField("week_power_points", DoubleType(), True),
-        StructField("previous_power_rank_score", DoubleType(), True),
-        StructField("power_rank_score", DoubleType(), True)
-    ])
+# def gold_power_rankings():
+#     schema = StructType([
+#         StructField("_league_id", StringType(), True),
+#         StructField("roster_id", IntegerType(), True),
+#         StructField("_matchup_week", IntegerType(), True),
+#         StructField("week_power_points", DoubleType(), True),
+#         StructField("previous_power_rank_score", DoubleType(), True),
+#         StructField("power_rank_score", DoubleType(), True)
+#     ])
 
-    pandas_udf(schema, functionType=PandasUDFType.GROUPED_MAP)
+#     pandas_udf(schema, functionType=PandasUDFType.GROUPED_MAP)
 
-    def power_rankings(pdf):
-        pdf = pdf.sort_values("_matchup_week").reset_index(drop=True)
+#     def power_rankings(pdf):
+#         pdf = pdf.sort_values("_matchup_week").reset_index(drop=True)
 
-        prscore_list = []
-        prev_prscore_list = []
+#         prscore_list = []
+#         prev_prscore_list = []
 
-        for i, row in pdf.iterrows():
-            if i == 0:
-                prscore = row["week_power_points"]
-                prev_prscore = None
-            else:
-                prscore = prev_prscore * 0.7 + row["week_power_points"] * 0.3
+#         for i, row in pdf.iterrows():
+#             if i == 0:
+#                 prscore = row["week_power_points"]
+#                 prev_prscore = None
+#             else:
+#                 prscore = prev_prscore * 0.7 + row["week_power_points"] * 0.3
             
-            prscore_list.append(prscore)
-            prev_prscore_list.append(prev_prscore)
-            prev_prscore = prscore
+#             prscore_list.append(prscore)
+#             prev_prscore_list.append(prev_prscore)
+#             prev_prscore = prscore
 
-        pdf["power_rank_score"] = prscore_list
-        pdf["previous_power_rank_score"] = prev_prscore_list
+#         pdf["power_rank_score"] = prscore_list
+#         pdf["previous_power_rank_score"] = prev_prscore_list
 
-        return pdf[["_league_id", "roster_id", "_matchup_week", "week_power_points", "power_rank_score", "previous_power_rank_score"]]
+#         return pdf[["_league_id", "roster_id", "_matchup_week", "week_power_points", "power_rank_score", "previous_power_rank_score"]]
 
-    df = dlt.read('gold_weekly_performance_ranks')
+#     df = dlt.read('gold_weekly_performance_ranks')
 
-    # Apply the function
-    power_rank_df = df.groupby("_league_id", "roster_id").applyInPandas(power_rankings, schema)
+#     # Apply the function
+#     power_rank_df = df.groupby("_league_id", "roster_id").applyInPandas(power_rankings, schema)
 
-    joined_df = df.alias('src').join(
-        power_rank_df.alias('powerrank_df'), 
-        on=["_league_id", "roster_id", "_matchup_week", "week_power_points"]
-    ).select(
-        "src.*", 
-        "powerrank_df.power_rank_score", 
-        "powerrank_df.previous_power_rank_score"
-    )
+#     joined_df = df.alias('src').join(
+#         power_rank_df.alias('powerrank_df'), 
+#         on=["_league_id", "roster_id", "_matchup_week", "week_power_points"]
+#     ).select(
+#         "src.*", 
+#         "powerrank_df.power_rank_score", 
+#         "powerrank_df.previous_power_rank_score"
+#     )
 
-    # Define a window over each league and week
-    rank_window = Window.partitionBy("_league_id", "_matchup_week").orderBy(F.desc("power_rank_score"))
+#     # Define a window over each league and week
+#     rank_window = Window.partitionBy("_league_id", "_matchup_week").orderBy(F.desc("power_rank_score"))
 
-    # Add the power rank (1 = best score)
-    ranked_df = joined_df.withColumn("power_rank", F.dense_rank().over(rank_window))
+#     # Add the power rank (1 = best score)
+#     ranked_df = joined_df.withColumn("power_rank", F.dense_rank().over(rank_window))
 
-    prev_week_window = Window.partitionBy("_league_id", "roster_id").orderBy("_matchup_week")
-    final_df = ranked_df.withColumn(
-        "previous_power_rank",
-        F.lag("power_rank").over(prev_week_window)
-    )
+#     prev_week_window = Window.partitionBy("_league_id", "roster_id").orderBy("_matchup_week")
+#     final_df = ranked_df.withColumn(
+#         "previous_power_rank",
+#         F.lag("power_rank").over(prev_week_window)
+#     )
 
-    final_df = final_df.withColumn('power_rank_change', col('previous_power_rank') - col('power_rank'))
+#     final_df = final_df.withColumn('power_rank_change', col('previous_power_rank') - col('power_rank'))
 
-    return final_df
+#     return final_df
