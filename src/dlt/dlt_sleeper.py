@@ -25,9 +25,10 @@ import pyspark.sql.functions as F
 @dlt.table(
   comment="The raw rosters from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_rosters():
   rosters_schema = StructType([
@@ -62,7 +63,7 @@ def bronze_rosters():
     StructField("_ingested_ts", TimestampType(), True)
   ])
 
-  return spark.readStream.schema(rosters_schema).json('/mnt/databricks/sleeper/stg/rosters/*')
+  return spark.readStream.schema(rosters_schema).json('/mnt/databricks/sleeper/stg/rosters/')
 
 # COMMAND ----------
 
@@ -74,9 +75,10 @@ def bronze_rosters():
 @dlt.table(
   comment="The raw users from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_users():
     users_schema = StructType([
@@ -103,7 +105,7 @@ def bronze_users():
     StructField("_ingested_ts", TimestampType(), True)
 ])
 
-    return spark.readStream.schema(users_schema).json('/mnt/databricks/sleeper/stg/users/*')
+    return spark.readStream.schema(users_schema).json('/mnt/databricks/sleeper/stg/users/')
 
 # COMMAND ----------
 
@@ -115,9 +117,10 @@ def bronze_users():
 @dlt.table(
   comment="The raw matchups from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_matchups():
     matchups_schema = StructType([
@@ -135,7 +138,7 @@ def bronze_matchups():
         StructField("_ingested_ts", TimestampType(), True)
     ])
 
-    return spark.readStream.schema(matchups_schema).json('/mnt/databricks/sleeper/stg/matchups/*')
+    return spark.readStream.schema(matchups_schema).json('/mnt/databricks/sleeper/stg/matchups/')
 
 # COMMAND ----------
 
@@ -147,9 +150,10 @@ def bronze_matchups():
 @dlt.table(
   comment="The raw playoffs loser bracket from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_losers_bracket():
   bracket_schema = StructType([
@@ -165,9 +169,13 @@ def bronze_losers_bracket():
     ]), True),
     StructField("t1_from", StructType([
       StructField("l", IntegerType(), True)
-    ]), True)
+    ]), True),
+    StructField("_year", IntegerType(), True),
+    StructField("_league_id", StringType(), True),
+    StructField("_matchup_week", IntegerType(), True),
+    StructField("_ingested_ts", TimestampType(), True)
   ])
-  return spark.readStream.schema(bracket_schema).json('/mnt/databricks/sleeper/stg/losers_bracket/*')
+  return spark.readStream.schema(bracket_schema).json('/mnt/databricks/sleeper/stg/losers_bracket/')
 
 # COMMAND ----------
 
@@ -179,9 +187,10 @@ def bronze_losers_bracket():
 @dlt.table(
   comment="The raw playoffs loser bracket from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_winners_bracket():
   bracket_schema = StructType([
@@ -197,9 +206,13 @@ def bronze_winners_bracket():
     ]), True),
     StructField("t1_from", StructType([
       StructField("l", IntegerType(), True)
-    ]), True)
+    ]), True),
+    StructField("_year", IntegerType(), True),
+    StructField("_league_id", StringType(), True),
+    StructField("_matchup_week", IntegerType(), True),
+    StructField("_ingested_ts", TimestampType(), True)
   ])
-  return spark.readStream.schema(bracket_schema).json('/mnt/databricks/sleeper/stg/winners_bracket/*')
+  return spark.readStream.schema(bracket_schema).json('/mnt/databricks/sleeper/stg/winners_bracket/')
 
 # COMMAND ----------
 
@@ -211,9 +224,10 @@ def bronze_winners_bracket():
 @dlt.table(
   comment="The raw drafts from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_drafts():
   drafts_schema = StructType([
@@ -264,7 +278,7 @@ def bronze_drafts():
     StructField("_matchup_week", IntegerType(), True),
     StructField("_ingested_ts", TimestampType(), True)
   ])
-  return spark.readStream.schema(drafts_schema).json('/mnt/databricks/sleeper/stg/drafts/*')
+  return spark.readStream.schema(drafts_schema).json('/mnt/databricks/sleeper/stg/drafts/')
 
 # COMMAND ----------
 
@@ -276,9 +290,10 @@ def bronze_drafts():
 @dlt.table(
   comment="The raw draft picks from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_drafts_picks():
     draft_picks_schema = StructType([
@@ -311,7 +326,7 @@ def bronze_drafts_picks():
         StructField("_matchup_week", IntegerType(), True),
         StructField("_ingested_ts", TimestampType(), True)
     ])
-    return spark.readStream.schema(draft_picks_schema).json('/mnt/databricks/sleeper/stg/drafts_picks/*')
+    return spark.readStream.schema(draft_picks_schema).json('/mnt/databricks/sleeper/stg/drafts_picks/')
 
 # COMMAND ----------
 
@@ -323,9 +338,10 @@ def bronze_drafts_picks():
 @dlt.table(
   comment="The raw players from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_players():
     players_schema = StructType([
@@ -386,7 +402,7 @@ def bronze_players():
     StructField("_matchup_week", IntegerType(), True),
     StructField("_ingested_ts", TimestampType(), True)
     ])
-    return spark.readStream.schema(players_schema).json('/mnt/databricks/sleeper/stg/players/*')
+    return spark.readStream.schema(players_schema).json('/mnt/databricks/sleeper/stg/players/')
 
 # COMMAND ----------
 
@@ -398,17 +414,21 @@ def bronze_players():
 @dlt.table(
   comment="The raw players from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_players_trend_add():
     players_added_schema = StructType([
         StructField("count", IntegerType(), True),
-        StructField("player_id", StringType(), True)
+        StructField("player_id", StringType(), True),
+        StructField("_year", IntegerType(), True),
+        StructField("_matchup_week", IntegerType(), True),
+        StructField("_ingested_ts", TimestampType(), True)
     ])
 
-    return spark.readStream.schema(players_added_schema).json('/mnt/databricks/sleeper/stg/players_trend_add/*')
+    return spark.readStream.schema(players_added_schema).json('/mnt/databricks/sleeper/stg/players_trend_add/')
 
 # COMMAND ----------
 
@@ -421,17 +441,21 @@ def bronze_players_trend_add():
 @dlt.table(
   comment="The raw players from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_players_trend_drop():
     players_drop_schema = StructType([
         StructField("count", IntegerType(), True),
-        StructField("player_id", StringType(), True)
+        StructField("player_id", StringType(), True),
+        StructField("_year", IntegerType(), True),
+        StructField("_matchup_week", IntegerType(), True),
+        StructField("_ingested_ts", TimestampType(), True)
     ])
 
-    return spark.readStream.schema(players_drop_schema).json('/mnt/databricks/sleeper/stg/players_trend_drop/*')
+    return spark.readStream.schema(players_drop_schema).json('/mnt/databricks/sleeper/stg/players_trend_drop/')
 
 # COMMAND ----------
 
@@ -443,9 +467,10 @@ def bronze_players_trend_drop():
 @dlt.table(
   comment="The raw league information from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
-  }
+  },
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_leagues():
     league_schema = StructType([
@@ -593,7 +618,7 @@ def bronze_leagues():
         StructField("_ingested_ts", TimestampType(), True)
     ])
 
-    return spark.readStream.schema(league_schema).json('/mnt/databricks/sleeper/stg/league/*')
+    return spark.readStream.schema(league_schema).json('/mnt/databricks/sleeper/stg/league/')
 
 # COMMAND ----------
 
@@ -605,10 +630,10 @@ def bronze_leagues():
 @dlt.table(
   comment="The raw league information from the Sleeper API",
   table_properties={
-    "myCompanyPipeline.quality": "bronze",
+    "SleeperWarehouse.quality": "bronze",
     "pipelines.autoOptimize.managed": "true"
   },
-  partition_cols=["_league_id", "_matchup_week"]
+  partition_cols=["_year", "_matchup_week"]
 )
 def bronze_transactions():
     transaction_schema = StructType([
@@ -639,7 +664,7 @@ def bronze_transactions():
         StructField("_ingested_ts", TimestampType(), True)
     ])
 
-    return spark.readStream.schema(transaction_schema).json('/mnt/databricks/sleeper/stg/transactions/*')
+    return spark.readStream.schema(transaction_schema).json('/mnt/databricks/sleeper/stg/transactions/')
 
 # COMMAND ----------
 
@@ -653,7 +678,15 @@ def bronze_transactions():
 
 # COMMAND ----------
 
-dlt.create_streaming_table(name="silver_players_dim", comment="SCD2 on player master data")
+dlt.create_streaming_table(
+    name="silver_players_dim",
+    comment="SCD2 on player master data",
+    table_properties={
+        "SleeperWarehouse.quality": "silver",
+        "pipelines.autoOptimize.managed": "true"
+    },
+    partition_cols=["_year", "_matchup_week"]
+)
 dlt.apply_changes(
     target           = "silver_players_dim",
     source           = "bronze_players",
@@ -673,7 +706,11 @@ dlt.apply_changes(
 @dlt.table(
   name="silver_rosters_players_snapshot",
   comment="Weekly snapshot of the players in each roster, their starter status, and their nickname metadata",
-  partition_cols=["_year", "_matchup_week"]
+  table_properties={
+        "SleeperWarehouse.quality": "silver",
+        "pipelines.autoOptimize.managed": "true"
+    },
+    partition_cols=["_year", "_matchup_week"]
 )
 def silver_rosters_players_snapshot():
     return (

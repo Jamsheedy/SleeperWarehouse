@@ -26,8 +26,8 @@ This results in a ranking that gives more weight to recent performance, but stil
 
 # TODO:
 
-1. Finish ingesting all endpoints (trending_players, playoffs)
-2. Finish bronze for all endpoints. Pending (transactions, trending players, playoffs)
+- [x] Finish ingesting all endpoints (trending_players, playoffs)
+- [x] Finish bronze for all endpoints. Pending (transactions, trending players, playoffs)
 3. Multi league handling (Workflow + Ingestion + Model)
 4. Playoff modeling and integration with Power Rankings
 5. Players (draft + add/drop trend) modeling
