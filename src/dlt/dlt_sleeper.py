@@ -421,11 +421,11 @@ def bronze_players():
 )
 def bronze_players_trend_add():
     players_added_schema = StructType([
-        StructField("count", IntegerType(), True),
-        StructField("player_id", StringType(), True),
-        StructField("_year", IntegerType(), True),
-        StructField("_matchup_week", IntegerType(), True),
-        StructField("_ingested_ts", TimestampType(), True)
+      StructField("count", IntegerType(), True),
+      StructField("player_id", StringType(), True),
+      StructField("_year", IntegerType(), True),
+      StructField("_matchup_week", IntegerType(), True),
+      StructField("_ingested_ts", TimestampType(), True)
     ])
 
     return spark.readStream.schema(players_added_schema).json('/mnt/databricks/sleeper/stg/players_trend_add/')
@@ -448,11 +448,11 @@ def bronze_players_trend_add():
 )
 def bronze_players_trend_drop():
     players_drop_schema = StructType([
-        StructField("count", IntegerType(), True),
-        StructField("player_id", StringType(), True),
-        StructField("_year", IntegerType(), True),
-        StructField("_matchup_week", IntegerType(), True),
-        StructField("_ingested_ts", TimestampType(), True)
+      StructField("count", IntegerType(), True),
+      StructField("player_id", StringType(), True),
+      StructField("_year", IntegerType(), True),
+      StructField("_matchup_week", IntegerType(), True),
+      StructField("_ingested_ts", TimestampType(), True)
     ])
 
     return spark.readStream.schema(players_drop_schema).json('/mnt/databricks/sleeper/stg/players_trend_drop/')
@@ -925,7 +925,7 @@ dlt.create_streaming_table(name="silver_users_dim", comment="SCD2 on cleansed us
 dlt.apply_changes(
     target           = "silver_users_dim",
     source           = "silver_stg_users",
-    keys             = ["owner_id"],
+    keys             = ["_league_id","owner_id"],
     sequence_by      = col("_ingested_ts"),      # your bronze ingestion timestamp
     except_column_list = ["_ingested_ts"],       # drop ts from final dim
     stored_as_scd_type = "2"

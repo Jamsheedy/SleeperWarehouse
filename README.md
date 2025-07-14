@@ -24,10 +24,15 @@ $$1 - \alpha = .7\text{ (weight on the previous week's power rank score score)}$
 
 This results in a ranking that gives more weight to recent performance, but still respects past consistency.
 
-# TODO:
+### Known Model Issues:
+
+- bench better than starters will incorrectly choose both starters as canidates for single player (needs dense rank). Assumed that contra will also show same issue.
+- Team name can be null
+
+### TODO:
 
 - [x] Finish ingesting all endpoints (trending_players, playoffs)
 - [x] Finish bronze for all endpoints. Pending (transactions, trending players, playoffs)
-3. Multi league handling (Workflow + Ingestion + Model)
+- [x] Multi league handling (Workflow + Ingestion + Model)
 4. Playoff modeling and integration with Power Rankings
 5. Players (draft + add/drop trend) modeling
