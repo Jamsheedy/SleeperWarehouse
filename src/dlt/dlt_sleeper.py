@@ -6,7 +6,7 @@
 
 import dlt
 from pyspark.sql.types import StructType, StructField, StringType, ArrayType, IntegerType, MapType, DoubleType, NullType, FloatType, BooleanType, TimestampType, LongType
-from pyspark.sql.functions import col, expr, explode, current_timestamp, sum, when, lit, array_contains, coalesce, concat_ws
+from pyspark.sql.functions import col, expr, explode, current_timestamp, sum, when, lit, array_contains, coalesce, concat_ws, concat
 from pyspark.sql.window import Window
 import pyspark.sql.functions as F
 
@@ -900,7 +900,13 @@ def silver_stg_users():
         .withColumnRenamed("display_name", "owner_name")
         .withColumnRenamed("user_id", "owner_id")
         .withColumnRenamed("is_owner", "is_commissioner")
-        .withColumn("team_name", col("metadata.team_name"))
+        .withColumn(
+            "team_name",
+            when(
+                col("metadata.team_name").isNull(),
+                concat(lit("Team "), col("owner_name"))
+            ).otherwise(col("metadata.team_name"))
+        )
         .select(
             "owner_id",
             "owner_name",
@@ -1171,11 +1177,11 @@ def gold_weekly_performance_ranks():
 
     # dedup bench players who get recommended twice (take the highest point potential)
     window_spec = Window.partitionBy("bench._league_id","bench._matchup_week", "bench.roster_id", "bench.player_id").orderBy(F.desc("point_oppertunity_cost"))
-    df_bench_better_than_starters = df_bench_better_than_starters.withColumn("bench_player_dedup", F.rank().over(window_spec)).filter("bench_player_dedup == 1")
+    df_bench_better_than_starters = df_bench_better_than_starters.withColumn("bench_player_dedup", F.row_number().over(window_spec)).filter("bench_player_dedup == 1")
 
     # dedup starter players who get recommended against twice (take the highest point potential)
     window_spec = Window.partitionBy("bench._league_id","bench._matchup_week", "bench.roster_id", "starters.player_id").orderBy(F.desc("point_oppertunity_cost"))
-    df_bench_better_than_starters = df_bench_better_than_starters.withColumn("starter_player_dedup", F.rank().over(window_spec)).filter("starter_player_dedup == 1")
+    df_bench_better_than_starters = df_bench_better_than_starters.withColumn("starter_player_dedup", F.row_number().over(window_spec)).filter("starter_player_dedup == 1")
 
     # create array of struct to list each suggestion
     df_bench_better_than_starters = df_bench_better_than_starters.select(
