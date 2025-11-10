@@ -1,0 +1,423 @@
+{
+  "datasets": [
+    {
+      "name": "946c12a7",
+      "displayName": "Gold Power Rankings Data Analysis",
+      "queryLines": [
+        "SELECT * FROM sleeper.gold_power_ranks"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "e2de9ebe",
+      "displayName": "New Page",
+      "layout": [
+        {
+          "widget": {
+            "name": "adc8b6c0",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "946c12a7",
+                  "fields": [
+                    {
+                      "name": "owner_name",
+                      "expression": "`owner_name`"
+                    },
+                    {
+                      "name": "_matchup_week",
+                      "expression": "`_matchup_week`"
+                    },
+                    {
+                      "name": "sum(power_rank_score)",
+                      "expression": "SUM(`power_rank_score`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "_matchup_week",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(power_rank_score)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "owner_name",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 4,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "unlucky-losses",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "946c12a7",
+                  "fields": [
+                    {
+                      "name": "matchup_outcome_type",
+                      "expression": "`matchup_outcome_type`"
+                    },
+                    {
+                      "name": "owner_name",
+                      "expression": "`owner_name`"
+                    },
+                    {
+                      "name": "count(matchup_outcome_type)",
+                      "expression": "COUNT(`matchup_outcome_type`)"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "`matchup_outcome_type` IN (`matchup_outcome_type`) OR TRUE"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "owner_name",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "axis": {
+                    "hideLabels": false,
+                    "hideTitle": false
+                  }
+                },
+                "y": {
+                  "fieldName": "count(matchup_outcome_type)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "matchup_outcome_type",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Deserving Win",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "Lucky Win",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Matchup Outcome Types"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 13
+          }
+        },
+        {
+          "widget": {
+            "name": "total-points-for-against-by-team-name",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "946c12a7",
+                  "fields": [
+                    {
+                      "name": "owner_name",
+                      "expression": "`owner_name`"
+                    },
+                    {
+                      "name": "min(matchup_points)",
+                      "expression": "MIN(`matchup_points`)"
+                    },
+                    {
+                      "name": "q1(matchup_points)",
+                      "expression": "PERCENTILE(`matchup_points`, 0.25)"
+                    },
+                    {
+                      "name": "median(matchup_points)",
+                      "expression": "MEDIAN(`matchup_points`)"
+                    },
+                    {
+                      "name": "q3(matchup_points)",
+                      "expression": "PERCENTILE(`matchup_points`, 0.75)"
+                    },
+                    {
+                      "name": "max(matchup_points)",
+                      "expression": "MAX(`matchup_points`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "box",
+              "encodings": {
+                "x": {
+                  "fieldName": "owner_name",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "whiskerStart": {
+                    "fieldName": "min(matchup_points)"
+                  },
+                  "boxStart": {
+                    "fieldName": "q1(matchup_points)"
+                  },
+                  "boxMid": {
+                    "fieldName": "median(matchup_points)"
+                  },
+                  "boxEnd": {
+                    "fieldName": "q3(matchup_points)"
+                  },
+                  "whiskerEnd": {
+                    "fieldName": "max(matchup_points)"
+                  },
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 21,
+            "width": 6,
+            "height": 17
+          }
+        },
+        {
+          "widget": {
+            "name": "15995053",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "946c12a7",
+                  "fields": [
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    },
+                    {
+                      "name": "_matchup_week",
+                      "expression": "`_matchup_week`"
+                    },
+                    {
+                      "name": "power_rank_change",
+                      "expression": "`power_rank_change`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "heatmap",
+              "encodings": {
+                "x": {
+                  "fieldName": "_matchup_week",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "power_rank_change",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "color": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 38,
+            "width": 4,
+            "height": 8
+          }
+        },
+        {
+          "widget": {
+            "name": "5d55386d",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "946c12a7",
+                  "fields": [
+                    {
+                      "name": "bin(power_rank_score, binWidth=0_1)",
+                      "expression": "BIN_FLOOR(`power_rank_score`, 0.1)"
+                    },
+                    {
+                      "name": "count(*)",
+                      "expression": "COUNT(`*`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "histogram",
+              "encodings": {
+                "x": {
+                  "fieldName": "bin(power_rank_score, binWidth=0_1)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "count(*)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 46,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "68c28066",
+      "displayName": "Global Filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "01a44bc3",
+            "queries": [
+              {
+                "name": "dashboards/01ef7b850a571447ae3b3dc2173b7660/datasets/01f0be62f8401ebf8289a02eef551254__league_id",
+                "query": {
+                  "datasetName": "946c12a7",
+                  "fields": [
+                    {
+                      "name": "_league_id",
+                      "expression": "`_league_id`"
+                    },
+                    {
+                      "name": "_league_id_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "_league_id",
+                    "queryName": "dashboards/01ef7b850a571447ae3b3dc2173b7660/datasets/01f0be62f8401ebf8289a02eef551254__league_id"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true
+              },
+              "disallowAll": true,
+              "selection": {
+                "defaultSelection": {
+                  "values": {
+                    "dataType": "STRING",
+                    "values": [
+                      {
+                        "value": "1248655963133591552"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED"
+    },
+    "genieSpace": {
+      "isEnabled": false
+    },
+    "applyModeEnabled": false
+  }
+}
